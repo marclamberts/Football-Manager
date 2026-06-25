@@ -419,16 +419,18 @@ df_scores = pd.DataFrame(team_metrics).T[LABELS]   # teams × metrics, values 0�
 df_pct = df_scores.copy()
 for col in LABELS:
     col_vals = df_scores[col].values.tolist()
+    n = len(col_vals)
     df_pct[col] = [
-        round(percentileofscore(col_vals, v, kind="rank"), 1)
+        # scale 0-100 rank into 1-99 range
+        round(1 + (percentileofscore(col_vals, v, kind="rank") / 100) * 98, 1)
         for v in col_vals
     ]
 
-print("\n── Percentile Ranks (0 = lowest · 100 = highest in this dataset) ──")
+print("\n── Percentile Ranks (1 = lowest · 99 = highest in this dataset) ──")
 display(df_pct.style
         .format("{:.0f}")
-        .background_gradient(cmap="RdYlGn", axis=None, vmin=0, vmax=100)
-        .set_caption("Percentile Ranks across all teams"))
+        .background_gradient(cmap="RdYlGn", axis=None, vmin=1, vmax=99)
+        .set_caption("Percentile Ranks across all teams (1–99)"))
 
 # ── Cell 15: Pizza plots — one per team ───────────────────────────────────────
 from mplsoccer import PyPizza, add_image
@@ -619,9 +621,9 @@ for team in teams_sorted:
 
     ax_b.set_yticks(list(y_pos))
     ax_b.set_yticklabels(list(reversed(LABELS)), fontsize=9.5, fontweight="bold", color="#222")
-    ax_b.set_xlim(0, 103)
+    ax_b.set_xlim(0, 102)
     ax_b.set_xlabel("Percentile Rank", fontsize=9, color="#666")
-    ax_b.set_xticks([0, 25, 50, 75, 100])
+    ax_b.set_xticks([1, 25, 50, 75, 99])
     ax_b.xaxis.set_tick_params(labelsize=8, colors="#888")
     ax_b.spines[["top", "right", "left"]].set_visible(False)
     ax_b.spines["bottom"].set_color("#cccccc")
@@ -679,8 +681,8 @@ for i, team in enumerate(teams_sorted):
 
     ax_s.set_yticks(list(y_pos))
     ax_s.set_yticklabels(list(reversed(LABELS)), fontsize=8, color="#333")
-    ax_s.set_xlim(0, 103)
-    ax_s.set_xticks([0, 25, 50, 75, 100])
+    ax_s.set_xlim(0, 102)
+    ax_s.set_xticks([1, 25, 50, 75, 99])
     ax_s.xaxis.set_tick_params(labelsize=7, colors="#999")
     ax_s.spines[["top", "right", "left"]].set_visible(False)
     ax_s.spines["bottom"].set_color("#dddddd")
