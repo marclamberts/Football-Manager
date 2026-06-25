@@ -570,6 +570,131 @@ for i in range(len(teams_sorted)):
     try: os.remove(f"_pizza_tmp_{i}.png")
     except: pass
 
+print("\n✅ Pizza charts saved.")
+
+# ── Cell 17: Percentile rank bar charts — one per team ───────────────────────
+# Horizontal bars, metric label on left, percentile value on right,
+# background track shows the full 0–100 range.
+
+BAR_COLORS = {
+    "High Press":        "#E74C3C",
+    "Counter Play":      "#E67E22",
+    "Low Block":         "#F1C40F",
+    "Long Balls":        "#F1C40F",
+    "Deep Circulation":  "#2ECC71",
+    "Wing Play":         "#2ECC71",
+    "Territory":         "#3498DB",
+    "GK Build-Up":       "#3498DB",
+    "Crossing":          "#9B59B6",
+}
+
+for team in teams_sorted:
+    color  = team_color(team)
+    vals   = df_pct.loc[team, LABELS].tolist()
+    bar_c  = [BAR_COLORS[lbl] for lbl in LABELS]
+
+    fig_b, ax_b = plt.subplots(figsize=(7, 5.5), facecolor="#F5F5F5")
+    ax_b.set_facecolor("#F5F5F5")
+
+    y_pos = range(len(LABELS) - 1, -1, -1)   # top-to-bottom label order
+
+    # Background track (full 100)
+    for y in y_pos:
+        ax_b.barh(y, 100, color="#E0E0E0", height=0.6, zorder=1)
+
+    # Actual percentile bar
+    for y, val, bc in zip(y_pos, vals, bar_c):
+        ax_b.barh(y, val, color=bc, height=0.6, zorder=2, alpha=0.90)
+        # value label inside or outside depending on space
+        x_txt = val - 3 if val >= 15 else val + 2
+        ha_txt = "right" if val >= 15 else "left"
+        txt_col = "white" if val >= 15 else "#333333"
+        ax_b.text(x_txt, y, f"{int(val)}",
+                  va="center", ha=ha_txt, fontsize=9.5,
+                  fontweight="bold", color=txt_col, zorder=3)
+
+    # Reference lines
+    for xref in [25, 50, 75]:
+        ax_b.axvline(xref, color="#bbbbbb", linewidth=0.8, linestyle="--", zorder=0)
+
+    ax_b.set_yticks(list(y_pos))
+    ax_b.set_yticklabels(list(reversed(LABELS)), fontsize=9.5, fontweight="bold", color="#222")
+    ax_b.set_xlim(0, 103)
+    ax_b.set_xlabel("Percentile Rank", fontsize=9, color="#666")
+    ax_b.set_xticks([0, 25, 50, 75, 100])
+    ax_b.xaxis.set_tick_params(labelsize=8, colors="#888")
+    ax_b.spines[["top", "right", "left"]].set_visible(False)
+    ax_b.spines["bottom"].set_color("#cccccc")
+    ax_b.tick_params(axis="y", length=0)
+
+    # Titles
+    fig_b.text(0.13, 0.97, team,
+               fontsize=14, fontweight="bold", color=color,
+               va="top", ha="left")
+    fig_b.text(0.13, 0.925,
+               "Tactical Profile  ·  Percentile vs. dataset",
+               fontsize=9, color="#888888", va="top", ha="left")
+    fig_b.text(0.98, 0.01,
+               "Inspired by Analytics FC · Profiling Coaches with Data",
+               fontsize=6.5, color="#bbbbbb", va="bottom", ha="right")
+
+    plt.tight_layout(rect=[0, 0.02, 1, 0.92])
+    fname_b = f"bar_{team.replace(' ', '_')}.png"
+    plt.savefig(fname_b, dpi=160, bbox_inches="tight", facecolor="#F5F5F5")
+    plt.show()
+    print(f"  Saved {fname_b}")
+
+# ── Cell 18: Bar chart small-multiples grid ───────────────────────────────────
+ncols_b = 3
+nrows_b = math.ceil(len(teams_sorted) / ncols_b)
+fig_bg  = plt.figure(figsize=(7 * ncols_b, 6 * nrows_b), facecolor="white")
+fig_bg.suptitle(
+    "Tactical Percentile Ranks — Dutch Women's Football",
+    fontsize=15, fontweight="bold", color="#1a1a1a", y=1.01,
+)
+
+for i, team in enumerate(teams_sorted):
+    color  = team_color(team)
+    vals   = df_pct.loc[team, LABELS].tolist()
+    bar_c  = [BAR_COLORS[lbl] for lbl in LABELS]
+    y_pos  = range(len(LABELS) - 1, -1, -1)
+
+    ax_s = fig_bg.add_subplot(nrows_b, ncols_b, i + 1)
+    ax_s.set_facecolor("#F7F7F7")
+
+    for y in y_pos:
+        ax_s.barh(y, 100, color="#E4E4E4", height=0.6, zorder=1)
+
+    for y, val, bc in zip(y_pos, vals, bar_c):
+        ax_s.barh(y, val, color=bc, height=0.6, zorder=2, alpha=0.88)
+        x_txt = val - 2 if val >= 12 else val + 1.5
+        ha_txt = "right" if val >= 12 else "left"
+        txt_col = "white" if val >= 12 else "#444"
+        ax_s.text(x_txt, y, f"{int(val)}",
+                  va="center", ha=ha_txt, fontsize=8,
+                  fontweight="bold", color=txt_col, zorder=3)
+
+    for xref in [25, 50, 75]:
+        ax_s.axvline(xref, color="#cccccc", linewidth=0.6, linestyle="--", zorder=0)
+
+    ax_s.set_yticks(list(y_pos))
+    ax_s.set_yticklabels(list(reversed(LABELS)), fontsize=8, color="#333")
+    ax_s.set_xlim(0, 103)
+    ax_s.set_xticks([0, 25, 50, 75, 100])
+    ax_s.xaxis.set_tick_params(labelsize=7, colors="#999")
+    ax_s.spines[["top", "right", "left"]].set_visible(False)
+    ax_s.spines["bottom"].set_color("#dddddd")
+    ax_s.tick_params(axis="y", length=0)
+    ax_s.set_title(team, fontsize=10, fontweight="bold",
+                   color=color, pad=8)
+
+for j in range(i + 1, nrows_b * ncols_b):
+    fig_bg.add_subplot(nrows_b, ncols_b, j + 1).set_visible(False)
+
+plt.tight_layout()
+plt.savefig("bar_all_teams.png", dpi=150, bbox_inches="tight", facecolor="white")
+plt.show()
+
 print("\n✅ All charts saved to the Colab working directory.")
 print("   To save to Drive, copy them:")
 print("   !cp *.png '/content/drive/MyDrive/Football Manager/Output/'")
