@@ -10,6 +10,9 @@ Metrics
   Long Balls        – directness from defensive areas (high/long passes from own half)
   Deep Circulation  – proportion of passes in own defensive third that stay short / go back
   Wing Play         – concentration of passing + carrying actions in wide channels
+  Territory         – average normalised x-position of on-ball events (how high the team plays)
+  GK Build-Up       – proportion of GK passes that are short/ground (vs. going long)
+  Crossing          – proportion of passes flagged as crosses
 """
 
 import json, math
@@ -48,6 +51,9 @@ LABELS = [
     "Long Balls",
     "Deep Circulation",
     "Wing Play",
+    "Territory",
+    "GK Build-Up",
+    "Crossing",
 ]
 
 METRIC_DESC = {
@@ -57,6 +63,9 @@ METRIC_DESC = {
     "Long Balls":        "High/long passes\nfrom defensive areas",
     "Deep Circulation":  "Short/back passes\nin defensive third",
     "Wing Play":         "Passes & carries\nin wide channels",
+    "Territory":         "Average pitch position\nof on-ball actions",
+    "GK Build-Up":       "GK short/ground passes\nvs. total GK passes",
+    "Crossing":          "Crosses as share\nof total passes",
 }
 
 # ── coordinate helpers ────────────────────────────────────────────────────────
@@ -170,13 +179,39 @@ def raw_metrics(events, team_name):
     wide_actions  = pass_wide   + carry_wide
     wing_pct = wide_actions / total_actions if total_actions else 0
 
+    # 7 · TERRITORY ─────────────────────────────────────────────────────────
+    # Mean normalised x of all on-ball events (passes, carries, shots, dribbles)
+    ON_BALL = {"Pass", "Carry", "Shot", "Dribble", "Ball Receipt*"}
+    x_vals = [nx(e["location"][0], e.get("attacking_direction", "left_to_right"))
+               for e in team_ev
+               if e["type"]["name"] in ON_BALL and e.get("location")]
+    territory_avg_x = sum(x_vals) / len(x_vals) if x_vals else 60.0
+
+    # 8 · GK BUILD-UP ────────────────────────────────────────────────────────
+    # Proportion of GK passes that are short/ground (low length or ground height)
+    gk_passes = [e for e in team_ev
+                 if e["type"]["name"] == "Pass"
+                 and e.get("position", {}).get("name") == "Goalkeeper"]
+    gk_short  = [p for p in gk_passes
+                 if p.get("pass", {}).get("height", {}).get("name") in ("Ground Pass", "Low Pass")
+                 and p.get("pass", {}).get("length", 99) < 35]
+    gk_buildup_ratio = len(gk_short) / len(gk_passes) if gk_passes else 0.0
+
+    # 9 · CROSSING ───────────────────────────────────────────────────────────
+    passes_all = [e for e in team_ev if e["type"]["name"] == "Pass"]
+    crosses    = [p for p in passes_all if p.get("pass", {}).get("cross")]
+    cross_pct  = len(crosses) / len(passes_all) if passes_all else 0.0
+
     return dict(
-        ppda          = ppda,
-        counter_pct   = counter_pct,
-        low_block_pct = low_block_pct,
-        long_pct      = long_pct,
-        deep_circ_pct = deep_circ_pct,
-        wing_pct      = wing_pct,
+        ppda             = ppda,
+        counter_pct      = counter_pct,
+        low_block_pct    = low_block_pct,
+        long_pct         = long_pct,
+        deep_circ_pct    = deep_circ_pct,
+        wing_pct         = wing_pct,
+        territory_avg_x  = territory_avg_x,
+        gk_buildup_ratio = gk_buildup_ratio,
+        cross_pct        = cross_pct,
     )
 
 
@@ -200,6 +235,15 @@ def scale_metrics(raw):
     # Wing Play: 40 % → 0.0,  65 % → 1.0
     wing = max(0.0, min(1.0, (raw["wing_pct"] - 0.40) / 0.25))
 
+    # Territory: avg x  45 → 0.0,  65 → 1.0
+    territory = max(0.0, min(1.0, (raw["territory_avg_x"] - 45.0) / 20.0))
+
+    # GK Build-Up: 20 % → 0.0,  80 % → 1.0
+    gk_buildup = max(0.0, min(1.0, (raw["gk_buildup_ratio"] - 0.20) / 0.60))
+
+    # Crossing: 0 % → 0.0,  5 % → 1.0
+    crossing = min(1.0, raw["cross_pct"] / 0.05)
+
     return {
         "High Press":        round(high_press, 3),
         "Counter Play":      round(counter,    3),
@@ -207,6 +251,9 @@ def scale_metrics(raw):
         "Long Balls":        round(long_balls, 3),
         "Deep Circulation":  round(deep_circ,  3),
         "Wing Play":         round(wing,       3),
+        "Territory":         round(territory,  3),
+        "GK Build-Up":       round(gk_buildup, 3),
+        "Crossing":          round(crossing,   3),
     }
 
 
@@ -235,7 +282,8 @@ for t in teams_sorted:
     r = team_raw_avg[t]
     print(f"  {t}: PPDA={r['ppda']:.2f}  counter={r['counter_pct']:.2%}  "
           f"lowblock={r['low_block_pct']:.2%}  long={r['long_pct']:.2%}  "
-          f"deepcirc={r['deep_circ_pct']:.2%}  wing={r['wing_pct']:.2%}")
+          f"deepcirc={r['deep_circ_pct']:.2%}  wing={r['wing_pct']:.2%}  "
+          f"territory={r['territory_avg_x']:.2f}  gk={r['gk_buildup_ratio']:.2%}  cross={r['cross_pct']:.2%}")
 
 print("\nScaled metrics:")
 for t in teams_sorted:
@@ -322,7 +370,7 @@ plt.close()
 print(f"Saved {out2.name}")
 
 # ── FIGURE 3 — Bar chart breakdown per metric ─────────────────────────────────
-fig3, axes = plt.subplots(2, 3, figsize=(15, 8), facecolor="white")
+fig3, axes = plt.subplots(3, 3, figsize=(15, 12), facecolor="white")
 fig3.suptitle("Metric-by-Metric Breakdown", fontsize=13,
               fontweight="bold", color="#1a1a1a", y=1.01)
 
@@ -335,7 +383,7 @@ short_names = {
 }
 
 for idx, lbl in enumerate(LABELS):
-    ax = axes[idx // 3][idx % 3]
+    ax = axes[idx // 3, idx % 3]
     vals   = [team_metrics[t][lbl] for t in teams_sorted]
     colors = [TEAM_COLORS.get(t, "#555") for t in teams_sorted]
     xlabels = [short_names.get(t, t) for t in teams_sorted]
