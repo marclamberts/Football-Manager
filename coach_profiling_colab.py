@@ -407,6 +407,169 @@ plt.tight_layout()
 plt.savefig("metrics_heatmap.png", dpi=160, bbox_inches="tight", facecolor="white")
 plt.show()
 
-print("\n✅ All 4 charts saved to the Colab working directory.")
+print("\n✅ Charts 1–4 saved to the Colab working directory.")
+
+# ── Cell 14: Percentile ranks ─────────────────────────────────────────────────
+# For each metric, rank each team relative to all teams in the dataset (0–100).
+# scipy percentileofscore uses 'rank' method: average of lower/upper bounds.
+from scipy.stats import percentileofscore
+
+df_scores = pd.DataFrame(team_metrics).T[LABELS]   # teams × metrics, values 0–1
+
+df_pct = df_scores.copy()
+for col in LABELS:
+    col_vals = df_scores[col].values.tolist()
+    df_pct[col] = [
+        round(percentileofscore(col_vals, v, kind="rank"), 1)
+        for v in col_vals
+    ]
+
+print("\n── Percentile Ranks (0 = lowest · 100 = highest in this dataset) ──")
+display(df_pct.style
+        .format("{:.0f}")
+        .background_gradient(cmap="RdYlGn", axis=None, vmin=0, vmax=100)
+        .set_caption("Percentile Ranks across all teams"))
+
+# ── Cell 15: Pizza plots — one per team ───────────────────────────────────────
+from mplsoccer import PyPizza, add_image
+from matplotlib.colors import to_rgba
+
+# Slice colours based on metric category
+SLICE_COLORS = {
+    "High Press":        "#E74C3C",   # red   – pressing
+    "Counter Play":      "#E67E22",   # orange – transition
+    "Low Block":         "#F1C40F",   # yellow – defending
+    "Long Balls":        "#F1C40F",
+    "Deep Circulation":  "#2ECC71",   # green  – build-up
+    "Wing Play":         "#2ECC71",
+    "Territory":         "#3498DB",   # blue   – positional
+    "GK Build-Up":       "#3498DB",
+    "Crossing":          "#9B59B6",   # purple – delivery
+}
+slice_colors = [SLICE_COLORS[lbl] for lbl in LABELS]
+text_colors  = ["white"] * len(LABELS)
+
+baker = PyPizza(
+    params            = LABELS,
+    background_color  = "#FFFFFF",
+    straight_line_color= "#CCCCCC",
+    straight_line_lw  = 1,
+    last_circle_color = "#CCCCCC",
+    last_circle_lw    = 2,
+    other_circle_lw   = 1,
+    other_circle_color= "#EEEEEE",
+    inner_circle_size = 10,
+)
+
+for team in teams_sorted:
+    color  = team_color(team)
+    values = df_pct.loc[team, LABELS].tolist()
+    values_int = [int(v) for v in values]
+
+    fig_p, ax_p = baker.make_pizza(
+        values_int,
+        figsize           = (8, 8),
+        color_blank_space = "same",
+        slice_colors      = slice_colors,
+        value_colors      = text_colors,
+        value_bck_colors  = slice_colors,
+        blank_alpha        = 0.4,
+        kwargs_slices     = dict(edgecolor="#FFFFFF", zorder=2, linewidth=1),
+        kwargs_params     = dict(color="#222222", fontsize=10,
+                                  fontweight="bold", va="center"),
+        kwargs_values     = dict(color="#FFFFFF", fontsize=10,
+                                  fontweight="bold", zorder=3,
+                                  bbox=dict(edgecolor="#FFFFFF", facecolor=color,
+                                            boxstyle="round,pad=0.2", lw=1.5)),
+    )
+
+    # Title
+    fig_p.text(0.515, 0.975, team,
+               size=16, fontweight="bold", color=color,
+               ha="center", va="top")
+    fig_p.text(0.515, 0.945,
+               "Tactical Profile  |  Percentile vs. dataset",
+               size=10, color="#555555", ha="center", va="top")
+
+    # Subtitle credits
+    fig_p.text(0.515, 0.02,
+               "Metrics inspired by Analytics FC · Profiling Coaches with Data",
+               size=7, color="#aaaaaa", ha="center", va="bottom")
+
+    fname_out = f"pizza_{team.replace(' ', '_')}.png"
+    plt.savefig(fname_out, dpi=160, bbox_inches="tight", facecolor="white")
+    plt.show()
+    print(f"  Saved {fname_out}")
+
+# ── Cell 16: Pizza comparison — all teams small multiples ────────────────────
+ncols_p = 3
+nrows_p = math.ceil(len(teams_sorted) / ncols_p)
+fig_all = plt.figure(figsize=(6 * ncols_p, 6.5 * nrows_p), facecolor="white")
+fig_all.suptitle(
+    "Tactical Pizza Plots — Percentile Ranks\nDutch Women's Football",
+    fontsize=14, fontweight="bold", color="#1a1a1a", y=1.01,
+)
+
+for i, team in enumerate(teams_sorted):
+    color      = team_color(team)
+    values_int = [int(v) for v in df_pct.loc[team, LABELS].tolist()]
+
+    baker_small = PyPizza(
+        params             = LABELS,
+        background_color   = "#FFFFFF",
+        straight_line_color= "#CCCCCC",
+        straight_line_lw   = 0.8,
+        last_circle_color  = "#CCCCCC",
+        last_circle_lw     = 1.5,
+        other_circle_lw    = 0.8,
+        other_circle_color = "#EEEEEE",
+        inner_circle_size  = 10,
+    )
+
+    # PyPizza needs its own figure; we'll draw it then transfer the axes
+    fig_tmp, ax_tmp = baker_small.make_pizza(
+        values_int,
+        figsize            = (5, 5),
+        color_blank_space  = "same",
+        slice_colors       = slice_colors,
+        value_colors       = text_colors,
+        value_bck_colors   = slice_colors,
+        blank_alpha         = 0.4,
+        kwargs_slices      = dict(edgecolor="#FFFFFF", zorder=2, linewidth=0.8),
+        kwargs_params      = dict(color="#222222", fontsize=7.5,
+                                   fontweight="bold", va="center"),
+        kwargs_values      = dict(color="#FFFFFF", fontsize=8,
+                                   fontweight="bold", zorder=3,
+                                   bbox=dict(edgecolor="#FFFFFF", facecolor=color,
+                                             boxstyle="round,pad=0.15", lw=1)),
+    )
+    fig_tmp.text(0.5, 0.97, team, size=10, fontweight="bold",
+                 color=color, ha="center", va="top")
+
+    fname_tmp = f"_pizza_tmp_{i}.png"
+    fig_tmp.savefig(fname_tmp, dpi=120, bbox_inches="tight", facecolor="white")
+    plt.close(fig_tmp)
+
+    # load image into grid figure
+    from matplotlib.image import imread
+    img = imread(fname_tmp)
+    ax_sub = fig_all.add_subplot(nrows_p, ncols_p, i + 1)
+    ax_sub.imshow(img)
+    ax_sub.axis("off")
+
+for j in range(i + 1, nrows_p * ncols_p):
+    fig_all.add_subplot(nrows_p, ncols_p, j + 1).set_visible(False)
+
+plt.tight_layout()
+plt.savefig("pizza_all_teams.png", dpi=150, bbox_inches="tight", facecolor="white")
+plt.show()
+
+# tidy temp files
+import os
+for i in range(len(teams_sorted)):
+    try: os.remove(f"_pizza_tmp_{i}.png")
+    except: pass
+
+print("\n✅ All charts saved to the Colab working directory.")
 print("   To save to Drive, copy them:")
 print("   !cp *.png '/content/drive/MyDrive/Football Manager/Output/'")
